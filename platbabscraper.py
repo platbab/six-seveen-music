@@ -22,11 +22,11 @@ class MusicDownloaderApp(ctk.CTk):
         if os.name == 'nt':
             self.default_config = os.path.join(os.getenv('APPDATA'), "streamrip", "config.toml")
         else:
-            self.default_config = os.path.expanduser("~/.config/streamrip/config.toml")
+            self.default_config = os.path.expanduser("")
 
         self.config_path_var = tk.StringVar(value=self.default_config)
         self.status_var = tk.StringVar(value="Status: Ready")
-        self.dl_path_var = tk.StringVar(value="Loading...")
+        self.dl_path_var = tk.StringVar(value="Choose a Path")
         self.thread_count_var = tk.IntVar(value=4)
         self.source_var = ctk.StringVar(value="qobuz")
 
