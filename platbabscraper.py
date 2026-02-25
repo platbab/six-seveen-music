@@ -7,7 +7,6 @@ import os
 import re
 import shutil
 import requests
-import sys
 from concurrent.futures import ThreadPoolExecutor
 
 ctk.set_appearance_mode("Dark")
@@ -40,7 +39,7 @@ class MusicDownloaderApp(ctk.CTk):
 
         self.title_label = ctk.CTkLabel(self, text="Platbab Ripper", font=ctk.CTkFont(size=32, weight="bold"))
         self.title_label.pack(pady=(30, 5))
-        self.desc_label = ctk.CTkLabel(self, text="fast and kool", text_color="gray60")
+        self.desc_label = ctk.CTkLabel(self, text="True Lossless Extraction", text_color="gray60")
         self.desc_label.pack(pady=(0, 20))
 
         self.card = ctk.CTkFrame(self, fg_color="#1e1e1e", corner_radius=20, border_width=1, border_color="#333333")
@@ -69,20 +68,20 @@ class MusicDownloaderApp(ctk.CTk):
         self.src_opt = ctk.CTkOptionMenu(self.sub_frame, values=["qobuz", "tidal"], variable=self.source_var, width=100)
         self.src_opt.pack(side="left", padx=10)
 
-        self.auto_switch = ctk.CTkSwitch(self.sub_frame, text="Fast mode", onvalue=True, offvalue=False)
+        self.auto_switch = ctk.CTkSwitch(self.sub_frame, text="Auto-Select Result", onvalue=True, offvalue=False)
         self.auto_switch.select()
         self.auto_switch.pack(side="left", padx=30)
 
         self.save_btn = ctk.CTkButton(self.sub_frame, text="APPLY SETTINGS", fg_color="#27ae60", hover_color="#1e8449", command=self.save_settings, width=150, font=ctk.CTkFont(weight="bold"))
         self.save_btn.pack(side="right", padx=5)
 
-        self.url_entry = ctk.CTkEntry(self, placeholder_text="Enter Playlist or Album URL...", width=700, height=50, font=ctk.CTkFont(size=14))
+        self.url_entry = ctk.CTkEntry(self, placeholder_text="Paste Link (Spotify / Apple / YouTube)...", width=700, height=50, font=ctk.CTkFont(size=14))
         self.url_entry.pack(pady=30)
 
         self.rip_btn = ctk.CTkButton(self, text="INITIALIZE RIP ENGINE", command=self.start_thread, font=ctk.CTkFont(size=18, weight="bold"), height=65, fg_color="#C70039", hover_color="#900C3F", corner_radius=10)
         self.rip_btn.pack(pady=10)
 
-        self.console = ctk.CTkTextbox(self, width=840, height=200, font=ctk.CTkFont(family="Consolas", size=12), border_width=1, border_color="#333333")
+        self.console = ctk.CTkTextbox(self, width=840, height=220, font=ctk.CTkFont(family="Consolas", size=12), border_width=1, border_color="#333333")
         self.console.pack(pady=20, padx=30)
 
         self.status_lbl = ctk.CTkLabel(self, textvariable=self.status_var, text_color="#3498db", font=ctk.CTkFont(weight="bold"))
@@ -121,8 +120,8 @@ class MusicDownloaderApp(ctk.CTk):
                 for line in lines:
                     if line.strip().startswith("folder ="): f.write(f'folder = "{new_dl}"\n')
                     else: f.write(line)
-            self.log("Settings applied to config.")
-            messagebox.showinfo("Success", "Configuration synchronized.")
+            self.log("Settings synchronized.")
+            messagebox.showinfo("Success", "Settings Applied.")
         except Exception as e: messagebox.showerror("Error", str(e))
 
     def start_thread(self):
@@ -135,22 +134,31 @@ class MusicDownloaderApp(ctk.CTk):
         try:
             auto = self.auto_switch.get()
             tracks = []
-            if "youtube.com" in url or "youtu.be" in url: tracks = self.parse_yt(url)
-            elif "spotify.com" in url: tracks = self.parse_sp(url)
-            elif "apple.com" in url: tracks = self.parse_ap(url)
-            else: self.exec_direct(url); return
+            if "youtube.com" in url or "youtu.be" in url:
+                tracks = self.parse_yt(url)
+            elif "spotify.com" in url:
+                tracks = self.parse_sp(url)
+            elif "apple.com" in url:
+                tracks = self.parse_ap(url)
+            else:
+                self.exec_direct(url)
+                return
 
-            if not tracks: self.log("Meta extraction failed."); return
+            if not tracks:
+                self.log("Metadata extraction failed.")
+                return
 
             workers = self.thread_count_var.get()
             if auto:
-                with ThreadPoolExecutor(max_workers=workers) as exe: exe.map(self.dl_auto, tracks)
+                with ThreadPoolExecutor(max_workers=workers) as exe:
+                    exe.map(self.dl_auto, tracks)
             else:
                 for t in tracks: self.dl_manual(t)
+
         except Exception as e: self.log(f"ERROR: {e}")
         finally:
             self.rip_btn.configure(state="normal")
-            self.status_var.set("Status: Completed")
+            self.status_var.set("Status: Job Finished")
 
     def parse_yt(self, url):
         from ytmusicapi import YTMusic
@@ -165,42 +173,53 @@ class MusicDownloaderApp(ctk.CTk):
     def parse_sp(self, url):
         try:
             r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'})
-            m = re.search(r'<title>(.*?)</title>', r.text)
-            return [m.group(1).replace(' | Spotify', '').strip()] if m else []
+            matches = re.findall(r'\"name\":\"(.*?)\"', r.text)
+            tracks = list(dict.fromkeys([m for m in matches if m not in ["Spotify", "Single", "Album"]]))
+            if not tracks:
+                og_title = re.search(r'<title>(.*?)</title>', r.text)
+                if og_title: tracks = [og_title.group(1).split('|')[0].strip()]
+            return tracks
         except: return []
 
     def parse_ap(self, url):
         try:
             r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'})
-            m = re.search(r'<meta property="og:title" content="(.*?)"', r.text)
-            if m:
-                c = m.group(1).replace('on Apple Music', '').replace('\u200e', '').strip()
-                return [c.split(' - Album by ')[1] + " " + c.split(' - Album by ')[0]] if ' - Album by ' in c else [c]
+            matches = re.findall(r'\"name\":\"(.*?)\"', r.text)
+            tracks = [m for m in matches if m and len(m) > 1 and m != "Apple Music"]
+            if not tracks:
+                og_title = re.search(r'<meta property="og:title" content="(.*?)"', r.text)
+                if og_title:
+                    clean = og_title.group(1).replace('on Apple Music', '').replace('\u200e', '').strip()
+                    tracks = [clean]
+            return list(dict.fromkeys(tracks))
         except: return []
-        return []
 
     def dl_auto(self, name):
         src = self.source_var.get()
         cmd = f'echo 1 | rip --config-path "{self.config_path_var.get()}" search -f {src} track "{name}"'
         try:
             p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-            o, _ = p.communicate()
-            if "Downloading" in o or "Complete" in o: self.log(f"SUCCESS: {name}")
+            stdout, _ = p.communicate()
+            if "Downloading" in stdout: self.log(f"DOWNLOADING: {name}")
+            elif "already exists" in stdout or "Skipping" in stdout: self.log(f"EXISTS: {name}")
+            elif "Complete" in stdout: self.log(f"COMPLETE: {name}")
+            elif "No results" in stdout: self.log(f"NOT FOUND: {name}")
             else: self.log(f"FAILED: {name}")
-        except: self.log(f"PIPE ERROR: {name}")
+        except: self.log(f"PROCESS ERROR: {name}")
 
     def dl_manual(self, name):
         src = self.source_var.get()
+        cmd = f'rip --config-path "{self.config_path_var.get()}" search {src} track "{name}"'
         if os.name == 'nt':
-            cmd = f'rip --config-path "{self.config_path_var.get()}" search {src} track "{name}"'
             subprocess.run(['cmd', '/c', 'start', 'cmd', '/k', cmd])
         else:
             term = "konsole" if shutil.which("konsole") else "x-terminal-emulator"
-            cmd = f'rip --config-path "{self.config_path_var.get()}" search {src} track "{name}"'
             subprocess.run([term, "-e", cmd])
 
     def exec_direct(self, url):
-        subprocess.run(['rip', '--config-path', self.config_path_var.get(), '--no-progress', 'url', url])
+        try:
+            subprocess.run(['rip', '--config-path', self.config_path_var.get(), '--no-progress', 'url', url])
+        except: pass
 
 if __name__ == "__main__":
     app = MusicDownloaderApp()
